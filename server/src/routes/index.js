@@ -6,6 +6,7 @@ export default [
     handler: 'controller.getGlossaryWords',
     config: {
       policies: [],
+      auth: false,
     },
   },
   {
@@ -15,6 +16,7 @@ export default [
     handler: 'controller.connectGlossaryWords',
     config: {
       policies: [],
+      auth: false,
     },
   },
   {
@@ -24,6 +26,7 @@ export default [
     handler: 'controller.disconnectGlossaryWords',
     config: {
       policies: [],
+      auth: false,
     },
   },
 ];
