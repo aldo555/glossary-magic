@@ -72,7 +72,6 @@ export const GlossaryMagicButton = ({ document }) => {
     const usedWords = []
 
     const contentFields = [
-      { name: 'contentLead', value: values.contentLead },
       { name: 'contentTop', value: values.contentTop },
       { name: 'contentMiddle', value: values.contentMiddle },
       { name: 'contentBottom', value: values.contentBottom },
@@ -180,7 +179,6 @@ export const GlossaryMagicButton = ({ document }) => {
     const usedWords = []
 
     const contentFields = [
-      { name: 'contentLead', value: values.contentLead },
       { name: 'contentTop', value: values.contentTop },
       { name: 'contentMiddle', value: values.contentMiddle },
       { name: 'contentBottom', value: values.contentBottom },
