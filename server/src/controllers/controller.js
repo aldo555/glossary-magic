@@ -38,6 +38,8 @@ const controller = ({ strapi }) => ({
         !word.article_categories || word.article_categories.length === 0
       );
 
+      const globalWordsSet = new Set(globalWords.map(w => w.documentId));
+
       const glossaryWordsMap = new Map();
       [...categoryWords, ...globalWords].forEach(word => {
         glossaryWordsMap.set(word.documentId, word);
@@ -47,9 +49,12 @@ const controller = ({ strapi }) => ({
       const config = strapi.config.get('plugin::glossary-magic')
 
       glossaryWords = glossaryWords.map((glossaryWord) => {
+        const isGlobal = globalWordsSet.has(glossaryWord.documentId);
+        const baseLink = `${config.glossaryBaseUrl}?search=${encodeURIComponent(glossaryWord.word)}`;
+
         return {
           ...glossaryWord,
-          link: `${config.glossaryBaseUrl}?search=${encodeURIComponent(glossaryWord.word)}&category=${encodeURIComponent(article.articleCategory.category)}`,
+          link: isGlobal ? baseLink : `${baseLink}&category=${encodeURIComponent(article.articleCategory.category)}`,
         }
       })
 
