@@ -22,22 +22,27 @@ const controller = ({ strapi }) => ({
         ctx.throw(404, 'Article category not found')
       }
 
-      let glossaryWords = await strapi.documents('api::glossary-word.glossary-word').findMany({
+      const categoryWords = await strapi.documents('api::glossary-word.glossary-word').findMany({
         filters: {
-          $or: [
-            {
-              article_categories: {
-                documentId: categoryId,
-              },
-            },
-            {
-              article_categories: {
-                $null: true,
-              },
-            },
-          ],
+          article_categories: {
+            documentId: categoryId,
+          },
         },
       });
+
+      const allWords = await strapi.documents('api::glossary-word.glossary-word').findMany({
+        populate: ['article_categories'],
+      });
+
+      const globalWords = allWords.filter(word =>
+        !word.article_categories || word.article_categories.length === 0
+      );
+
+      const glossaryWordsMap = new Map();
+      [...categoryWords, ...globalWords].forEach(word => {
+        glossaryWordsMap.set(word.documentId, word);
+      });
+      let glossaryWords = Array.from(glossaryWordsMap.values());
 
       const config = strapi.config.get('plugin::glossary-magic')
 
