@@ -24,9 +24,18 @@ const controller = ({ strapi }) => ({
 
       let glossaryWords = await strapi.documents('api::glossary-word.glossary-word').findMany({
         filters: {
-          article_categories: {
-            documentId: categoryId,
-          },
+          $or: [
+            {
+              article_categories: {
+                documentId: categoryId,
+              },
+            },
+            {
+              article_categories: {
+                $null: true,
+              },
+            },
+          ],
         },
       });
 
