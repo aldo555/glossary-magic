@@ -9,14 +9,14 @@ const controller = ({ strapi }) => ({
     try {
       const article = await strapi.documents('api::article.article').findOne({
         documentId: articleId,
-        populate: ['category'],
+        populate: ['articleCategory'],
       });
 
       if (!article) {
         ctx.throw(404, 'Article not found')
       }
 
-      const categoryId = article?.category?.documentId || null
+      const categoryId = article?.articleCategory?.documentId || null
 
       if (!categoryId) {
         ctx.throw(404, 'Article category not found')
@@ -49,7 +49,7 @@ const controller = ({ strapi }) => ({
       glossaryWords = glossaryWords.map((glossaryWord) => {
         return {
           ...glossaryWord,
-          link: `${config.glossaryBaseUrl}?search=${encodeURIComponent(glossaryWord.word)}&category=${encodeURIComponent(article.category.category)}`,
+          link: `${config.glossaryBaseUrl}?search=${encodeURIComponent(glossaryWord.word)}&category=${encodeURIComponent(article.articleCategory.category)}`,
         }
       })
 
@@ -134,7 +134,7 @@ const controller = ({ strapi }) => ({
     try {
       const article = await strapi.documents('api::article.article').findOne({
         documentId: articleId,
-        populate: ['category'],
+        populate: ['articleCategory'],
       });
 
       if (!article) {
