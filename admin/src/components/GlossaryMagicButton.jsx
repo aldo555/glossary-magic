@@ -71,35 +71,105 @@ export const GlossaryMagicButton = ({ document }) => {
   const addGlossaryLinks = (glossaryWords) => {
     const usedWords = []
 
-    const contentFields = [
-      { name: 'contentTop', value: values.contentTop },
-      { name: 'contentMiddle', value: values.contentMiddle },
-      { name: 'contentBottom', value: values.contentBottom },
-    ]
+    // Sort glossary words by length (longest first) to prioritize multi-word terms
+    const sortedWords = [...glossaryWords].sort((a, b) => b.word.length - a.word.length)
+
+    // Mutable copies of content
+    let contentTop = values.contentTop || ''
+    let contentMiddle = values.contentMiddle || ''
+    let contentBottom = values.contentBottom || ''
 
     const escapeRegExp = (string) => {
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     }
 
-    glossaryWords.forEach((glossaryWord) => {
+    // Normalize subscript characters to regular digits
+    const normalizeSubscripts = (string) => {
+      const subscriptMap = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9' }
+      return string.replace(/[₀₁₂₃₄₅₆₇₈₉]/g, char => subscriptMap[char] || char)
+    }
+
+    // Handle "(s)" optional plural notation - returns array of variants
+    const expandOptionalPlural = (word) => {
+      if (word.endsWith('(s)')) {
+        const base = word.slice(0, -3) // Remove "(s)"
+        return [base, base + 's']
+      }
+      return [word]
+    }
+
+    // Strip markdown formatting (bold, italic, code, strikethrough)
+    const stripMarkdownFormatting = (text) => {
+      return text
+        .replace(/\*\*(.+?)\*\*/g, '$1')  // bold **text**
+        .replace(/__(.+?)__/g, '$1')       // bold __text__
+        .replace(/\*(.+?)\*/g, '$1')       // italic *text*
+        .replace(/_(.+?)_/g, '$1')         // italic _text_
+        .replace(/~~(.+?)~~/g, '$1')       // strikethrough
+        .replace(/`(.+?)`/g, '$1')         // inline code
+    }
+
+    // Helper to check if a position is inside a markdown link
+    const isInsideMarkdownLink = (text, matchIndex, matchLength) => {
+      const linkPattern = /\[([^\]]+)\]\([^)]+\)/g
+      let match
+      while ((match = linkPattern.exec(text)) !== null) {
+        const linkStart = match.index
+        const linkEnd = linkStart + match[0].length
+        // Check if our match overlaps with this link
+        if (matchIndex < linkEnd && matchIndex + matchLength > linkStart) {
+          return true
+        }
+      }
+      return false
+    }
+
+    // Helper to replace first occurrence NOT inside a link
+    const replaceFirstNotInLink = (text, wordRegex, replacement) => {
+      let result = text
+      let match
+      const globalRegex = new RegExp(wordRegex.source, 'gi')
+
+      while ((match = globalRegex.exec(text)) !== null) {
+        if (!isInsideMarkdownLink(text, match.index, match[0].length)) {
+          // Replace this occurrence
+          result = text.slice(0, match.index) + replacement(match[0]) + text.slice(match.index + match[0].length)
+          return { replaced: true, result }
+        }
+      }
+      return { replaced: false, result }
+    }
+
+    sortedWords.forEach((glossaryWord) => {
       const word = glossaryWord.word
 
-      const escapedWord = escapeRegExp(word)
-      const singularForm = pluralize.singular(word)
-      const pluralForm = pluralize.plural(word)
+      // Expand "(s)" notation to both singular and plural variants
+      const wordVariants = expandOptionalPlural(word)
 
-      const escapedSingular = escapeRegExp(singularForm)
-      const escapedPlural = escapeRegExp(pluralForm)
+      // Build patterns from all variants
+      const patterns = new Set()
+      for (const variant of wordVariants) {
+        const normalizedWord = normalizeSubscripts(variant)
+        patterns.add(escapeRegExp(variant))
+        patterns.add(escapeRegExp(normalizedWord))
+        patterns.add(escapeRegExp(pluralize.singular(normalizedWord)))
+        patterns.add(escapeRegExp(pluralize.plural(normalizedWord)))
+      }
 
-      const wordPattern = `${escapedWord}|${escapedSingular}|${escapedPlural}`
+      const wordPattern = Array.from(patterns).join('|')
       const wordRegex = new RegExp(`\\b(${wordPattern})\\b`, 'i')
 
-      const linkRegex = new RegExp(`\\[\\s*(${wordPattern})\\s*\\]\\([^\\)]+\\)`, 'i')
-
+      // Check if this exact word is already linked (link text matches the word completely)
+      const linkContentPattern = /\[([^\]]+)\]\([^)]+\)/gi
+      const allContent = contentTop + contentMiddle + contentBottom
       let wordAlreadyLinked = false
-      for (let i = 0; i < contentFields.length; i++) {
-        const { value } = contentFields[i]
-        if (linkRegex.test(value)) {
+      let linkMatch
+      // Create a regex that matches the FULL link text (not partial)
+      const fullMatchRegex = new RegExp(`^(${wordPattern})$`, 'i')
+      while ((linkMatch = linkContentPattern.exec(allContent)) !== null) {
+        // Strip markdown formatting from link text before matching
+        const linkText = stripMarkdownFormatting(linkMatch[1].trim())
+        if (fullMatchRegex.test(linkText)) {
           wordAlreadyLinked = true
           break
         }
@@ -109,25 +179,42 @@ export const GlossaryMagicButton = ({ document }) => {
         return
       }
 
-      let wordReplaced = false
+      // Try to replace in each field, using updated content
+      const fields = [
+        { name: 'contentTop', content: contentTop },
+        { name: 'contentMiddle', content: contentMiddle },
+        { name: 'contentBottom', content: contentBottom },
+      ]
 
-      for (let i = 0; i < contentFields.length; i++) {
-        const field = contentFields[i]
-        const { name, value } = field
+      for (const field of fields) {
+        const { replaced, result } = replaceFirstNotInLink(
+          field.content,
+          wordRegex,
+          (match) => `[${match}](${glossaryWord.link})`
+        )
 
-        if (wordRegex.test(value)) {
-          const newValue = value.replace(wordRegex, (match) => `[${match}](${glossaryWord.link})`)
-
-          form.onChange({ target: { name: name, value: newValue } })
-
-          wordReplaced = true
+        if (replaced) {
+          // Update our mutable copy
+          if (field.name === 'contentTop') contentTop = result
+          else if (field.name === 'contentMiddle') contentMiddle = result
+          else if (field.name === 'contentBottom') contentBottom = result
 
           usedWords.push(word)
-
           break
         }
       }
     })
+
+    // Update form with final values
+    if (contentTop !== (values.contentTop || '')) {
+      form.onChange({ target: { name: 'contentTop', value: contentTop } })
+    }
+    if (contentMiddle !== (values.contentMiddle || '')) {
+      form.onChange({ target: { name: 'contentMiddle', value: contentMiddle } })
+    }
+    if (contentBottom !== (values.contentBottom || '')) {
+      form.onChange({ target: { name: 'contentBottom', value: contentBottom } })
+    }
 
     return usedWords
   }
@@ -179,40 +266,75 @@ export const GlossaryMagicButton = ({ document }) => {
     const usedWords = []
 
     const contentFields = [
-      { name: 'contentTop', value: values.contentTop },
-      { name: 'contentMiddle', value: values.contentMiddle },
-      { name: 'contentBottom', value: values.contentBottom },
+      values.contentTop || '',
+      values.contentMiddle || '',
+      values.contentBottom || '',
     ]
+    const allContent = contentFields.join(' ')
 
     const escapeRegExp = (string) => {
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     }
 
+    // Extract all link texts from content
+    const linkContentPattern = /\[([^\]]+)\]\([^)]+\)/gi
+    const linkTexts = []
+    let linkMatch
+    while ((linkMatch = linkContentPattern.exec(allContent)) !== null) {
+      linkTexts.push(linkMatch[1])
+    }
+
+    // Normalize subscript characters to regular digits
+    const normalizeSubscripts = (string) => {
+      const subscriptMap = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9' }
+      return string.replace(/[₀₁₂₃₄₅₆₇₈₉]/g, char => subscriptMap[char] || char)
+    }
+
+    // Handle "(s)" optional plural notation
+    const expandOptionalPlural = (word) => {
+      if (word.endsWith('(s)')) {
+        const base = word.slice(0, -3)
+        return [base, base + 's']
+      }
+      return [word]
+    }
+
+    // Strip markdown formatting (bold, italic, code, strikethrough)
+    const stripMarkdownFormatting = (text) => {
+      return text
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/__(.+?)__/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/_(.+?)_/g, '$1')
+        .replace(/~~(.+?)~~/g, '$1')
+        .replace(/`(.+?)`/g, '$1')
+    }
+
     glossaryWords.forEach((glossaryWord) => {
       const word = glossaryWord.word
+      const wordVariants = expandOptionalPlural(word)
 
-      const escapedWord = escapeRegExp(word)
-      const singularForm = pluralize.singular(word)
-      const pluralForm = pluralize.plural(word)
-
-      const escapedSingular = escapeRegExp(singularForm)
-      const escapedPlural = escapeRegExp(pluralForm)
-
-      const wordPattern = `${escapedWord}|${escapedSingular}|${escapedPlural}`
-
-      const linkRegex = new RegExp(`\\[\\s*(${wordPattern})\\s*\\]\\([^\\)]+\\)`, 'i')
-
-      let wordAlreadyLinked = false
-      for (let i = 0; i < contentFields.length; i++) {
-        const { value } = contentFields[i]
-        if (linkRegex.test(value)) {
-          wordAlreadyLinked = true
-          break
-        }
+      const patterns = new Set()
+      for (const variant of wordVariants) {
+        const normalizedWord = normalizeSubscripts(variant)
+        patterns.add(escapeRegExp(variant))
+        patterns.add(escapeRegExp(normalizedWord))
+        patterns.add(escapeRegExp(pluralize.singular(normalizedWord)))
+        patterns.add(escapeRegExp(pluralize.plural(normalizedWord)))
       }
 
-      if (wordAlreadyLinked) {
-        usedWords.push(glossaryWord)
+      const wordPattern = Array.from(patterns).join('|')
+      // Use full match - link text must BE the word, not just contain it
+      const fullMatchRegex = new RegExp(`^(${wordPattern})$`, 'i')
+
+      // Check if any link text exactly matches this word
+      for (const linkText of linkTexts) {
+        // Strip markdown formatting before matching
+        const cleanLinkText = stripMarkdownFormatting(linkText.trim())
+        if (fullMatchRegex.test(cleanLinkText)) {
+          usedWords.push(glossaryWord)
+          break
+        }
       }
     })
 
