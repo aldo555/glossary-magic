@@ -124,14 +124,29 @@ export const GlossaryMagicButton = ({ document }) => {
       return false
     }
 
-    // Helper to replace first occurrence NOT inside a link
+    // Helper to check if a position is inside a markdown heading
+    const isInsideHeading = (text, matchIndex) => {
+      // Find the start of the line containing this match
+      let lineStart = matchIndex
+      while (lineStart > 0 && text[lineStart - 1] !== '\n') {
+        lineStart--
+      }
+
+      // Get the text from line start to check if it's a heading
+      const lineText = text.slice(lineStart)
+
+      // Check if line starts with heading pattern (# followed by space)
+      return /^#{1,6}\s/.test(lineText)
+    }
+
+    // Helper to replace first occurrence NOT inside a link or heading
     const replaceFirstNotInLink = (text, wordRegex, replacement) => {
       let result = text
       let match
       const globalRegex = new RegExp(wordRegex.source, 'gi')
 
       while ((match = globalRegex.exec(text)) !== null) {
-        if (!isInsideMarkdownLink(text, match.index, match[0].length)) {
+        if (!isInsideMarkdownLink(text, match.index, match[0].length) && !isInsideHeading(text, match.index)) {
           // Replace this occurrence
           result = text.slice(0, match.index) + replacement(match[0]) + text.slice(match.index + match[0].length)
           return { replaced: true, result }
